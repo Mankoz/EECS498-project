@@ -43,38 +43,39 @@ module Host {
   }
 
 /*{*/
-  ghost predicate CanSendGrant(c:Constants, v:Variables, to:HostId, e:nat)
+  ghost predicate SendGrant(c:Constants, v:Variables, v':Variables, msgOps:Network.MessageOps<Message>, to:HostId)
   {
-    v.hasLock
-    && ValidHostId(c.numHosts, to)
+    && v.hasLock
+    && v' == v.(hasLock := false, epoch := v.epoch)
+    && 0 <= to < c.numHosts
     && to != c.myId
-    && e > v.epoch
+    && msgOps.send == Some(Grant(to, v.epoch))
+    && msgOps.recv == None
   }
 
-  ghost predicate CanReceiveGrant(v:Variables, e:nat)
+  ghost predicate ReceiveGrant(c:Constants, v:Variables, v':Variables, msgOps:Network.MessageOps<Message>)
   {
-    e > v.epoch
+    && msgOps.recv.Some?
+    && (var grant := msgOps.recv.value;
+       && grant.to == c.myId
+       && grant.epoch > v.epoch
+       && !v.hasLock
+       && v' == v.(hasLock := true, epoch := grant.epoch + 1))
+    && msgOps.send == None
   }
 /*}*/
   // JayNF
   datatype Step =
 /*{*/
-    | Idle
-    | SendGrant(to: HostId, e: nat)
-    | RecvGrant(e: nat)
+    | SendGrantStep(to: HostId)
+    | ReceiveGrantStep
 /*}*/
 
   ghost predicate NextStep(c:Constants, v:Variables, v':Variables, msgOps:Network.MessageOps<Message>, step: Step) {
     match step
 /*{*/
-   case Idle =>
-      v' == v
-    case SendGrant(to, e) =>
-      CanSendGrant(c, v, to, e)
-      && v' == Variables(false, v.epoch)
-    case RecvGrant(e) =>
-      CanReceiveGrant(v, e)
-      && v' == Variables(true, e)
+  case SendGrantStep(to) => SendGrant(c, v, v', msgOps, to)
+  case ReceiveGrantStep => ReceiveGrant(c, v, v', msgOps)
 /*}*/
   }
 

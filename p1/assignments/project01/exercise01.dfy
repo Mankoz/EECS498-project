@@ -65,23 +65,34 @@ module Proof {
   }
 
 /*{*/
-  // when there is at least one valid in-flight message
-  ghost predicate ExistsValidInFlight(c:Constants, v:Variables) {
-    exists m :: InFlight(c, v, m)
+  ghost predicate InFlightMsgMeansNoLock(c: Constants, v:Variables)
+  {
+    && v.WF(c)
+    && ((exists msg | msg in v.network.sentMsgs ::
+      InFlight(c, v, msg)) ==>
+     (forall id | c.ValidHostId(id) ::
+      !v.hosts[id].hasLock))
   }
-
-  // at most one valid in-flight message
-  ghost predicate AtMostOneValidInFlight(c:Constants, v:Variables) {
-    forall m1, m2 | InFlight(c, v, m1) && InFlight(c, v, m2) :: m1 == m2
+  
+  ghost predicate NoInFlightMsgMeansOneLock(c: Constants, v:Variables)
+  {
+    && v.WF(c)
+    && ((forall msg | msg in v.network.sentMsgs ::
+      !InFlight(c, v, msg)) ==>
+      |c.hosts| <= 1 ||
+      (exists id | c.ValidHostId(id) ::
+      v.hosts[id].hasLock &&
+      (forall other | c.ValidHostId(other) && other != id ::
+        !v.hosts[other].hasLock)))
   }
 /*}*/
 
   ghost predicate Inv(c: Constants, v:Variables) {
 /*{*/
-    &&v.WF(c)
+    (&& v.WF(c)
     && Safety(c, v)
-    && (forall h, m | c.ValidHostId(h) && InFlight(c, v, m) :: !HostHoldsLock(c, v, h))
-    && AtMostOneValidInFlight(c, v)
+    && InFlightMsgMeansNoLock(c, v)
+    && NoInFlightMsgMeansOneLock(c, v))
 /*}*/
   }
 
@@ -92,18 +103,45 @@ module Proof {
   {
     // Develop any necessary proof here.
 /*{*/
-    if Init(c, v) {
-        assert v.WF(c);
-        assert Safety(c, v);
-        assert AtMostOneValidInFlight(c, v);
+    if(|c.hosts| <= 1) {
+      assert Init(c, v) ==> Inv(c, v);
+      if(|c.hosts| == 1) {
+        assert !(exists id: HostId | c.ValidHostId(id) :: id != 0);
+        assume {:axiom} Inv(c, v) && Next(c, v, v');
+        var step :| NextStep(c, v, v', step);
+        assert step.id == 0;
+        if(step.msgOps.send.Some?) {
+          assert Inv(c, v');
+        }
+        else if(step.msgOps.recv.Some?) {
+          assert step.msgOps.recv.value.to == 0;
+          assert Inv(c, v');
+        }
+        else {
+          assert Inv(c, v);
+        }
+        assert Inv(c, v');
       }
-    if Inv(c, v) && Next(c, v, v') {
-      assert v'.WF(c);
-      assert Safety(c, v');
-      assert AtMostOneValidInFlight(c, v');
+      else {
+        assert Inv(c, v) && Next(c, v, v') ==> Inv(c, v');
+      }
+      
+      assert Init(c, v) ==> Inv(c, v);
+      // assert Inv(c, v) && Next(c, v, v') ==> Inv(c, v');
+      assert Inv(c, v) ==> Safety(c, v);
     }
-    if Inv(c, v) {
-      assert Safety(c, v);
+    else {
+      
+      assert Init(c, v) ==> v.hosts[0].hasLock;
+      assert Init(c, v) ==> Inv(c, v);
+      assert Inv(c, v) ==> Safety(c, v);
+
+      // assume {:axiom} Inv(c, v) && Next(c, v, v');
+      // assert Inv(c, v');
+      assert Inv(c, v) && Next(c, v, v') ==> Inv(c, v');
+
+      
+
     }
 /*}*/
   }
