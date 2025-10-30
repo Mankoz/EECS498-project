@@ -65,6 +65,17 @@ module Proof {
   }
 
 /*{*/
+  ghost predicate AtMostOneInFlightMsg(c: Constants, v:Variables)
+  {
+    && v.WF(c)
+    && forall msg1, msg2 |
+      msg1 in v.network.sentMsgs &&
+      msg2 in v.network.sentMsgs &&
+      InFlight(c, v, msg1) &&
+      InFlight(c, v, msg2) ::
+        msg1 == msg2
+  }
+
   ghost predicate InFlightMsgMeansNoLock(c: Constants, v:Variables)
   {
     && v.WF(c)
@@ -77,22 +88,28 @@ module Proof {
   ghost predicate NoInFlightMsgMeansOneLock(c: Constants, v:Variables)
   {
     && v.WF(c)
+    // && ((forall msg | msg in v.network.sentMsgs ::
+    //   !InFlight(c, v, msg)) ==>
+    //   |c.hosts| <= 1 ||
+    //   (exists id | c.ValidHostId(id) ::
+    //   v.hosts[id].hasLock &&
+    //   (forall other | c.ValidHostId(other) && other != id ::
+    //     !v.hosts[other].hasLock)))
     && ((forall msg | msg in v.network.sentMsgs ::
       !InFlight(c, v, msg)) ==>
       |c.hosts| <= 1 ||
-      (exists id | c.ValidHostId(id) ::
-      v.hosts[id].hasLock &&
-      (forall other | c.ValidHostId(other) && other != id ::
-        !v.hosts[other].hasLock)))
+      (forall id1, id2 | c.ValidHostId(id1) && c.ValidHostId(id2) && v.hosts[id1].hasLock && v.hosts[id2].hasLock ::
+        id1 == id2))
   }
 /*}*/
 
   ghost predicate Inv(c: Constants, v:Variables) {
 /*{*/
-    (&& v.WF(c)
+    && v.WF(c)
     && Safety(c, v)
+    && AtMostOneInFlightMsg(c, v)
     && InFlightMsgMeansNoLock(c, v)
-    && NoInFlightMsgMeansOneLock(c, v))
+    && NoInFlightMsgMeansOneLock(c, v)
 /*}*/
   }
 
@@ -103,46 +120,45 @@ module Proof {
   {
     // Develop any necessary proof here.
 /*{*/
-    if(|c.hosts| <= 1) {
-      assert Init(c, v) ==> Inv(c, v);
-      if(|c.hosts| == 1) {
-        assert !(exists id: HostId | c.ValidHostId(id) :: id != 0);
-        assume {:axiom} Inv(c, v) && Next(c, v, v');
-        var step :| NextStep(c, v, v', step);
-        assert step.id == 0;
-        if(step.msgOps.send.Some?) {
-          assert Inv(c, v');
-        }
-        else if(step.msgOps.recv.Some?) {
-          assert step.msgOps.recv.value.to == 0;
-          assert Inv(c, v');
-        }
-        else {
-          assert Inv(c, v);
-        }
-        assert Inv(c, v');
-      }
-      else {
-        assert Inv(c, v) && Next(c, v, v') ==> Inv(c, v');
-      }
+    // if(|c.hosts| <= 1) {
+    //   if(|c.hosts| == 1) {
+    //     assert !(exists id: HostId | c.ValidHostId(id) :: id != 0);
+    //     assume {:axiom} Inv(c, v) && Next(c, v, v');
+    //     var step :| NextStep(c, v, v', step);
+    //     assert step.id == 0;
+    //     if(step.msgOps.send.Some?) {
+    //       assert Inv(c, v');
+    //     }
+    //     else if(step.msgOps.recv.Some?) {
+    //       assert step.msgOps.recv.value.to == 0;
+    //       assert Inv(c, v');
+    //     }
+    //     else {
+    //       assert Inv(c, v);
+    //     }
+    //     assert Inv(c, v');
+    //   }
+    //   else {
+    //     assert Inv(c, v) && Next(c, v, v') ==> Inv(c, v');
+    //   }
       
-      assert Init(c, v) ==> Inv(c, v);
-      // assert Inv(c, v) && Next(c, v, v') ==> Inv(c, v');
-      assert Inv(c, v) ==> Safety(c, v);
-    }
-    else {
+    //   assert Init(c, v) ==> Inv(c, v);
+    //   assert Inv(c, v) && Next(c, v, v') ==> Inv(c, v');
+    //   assert Inv(c, v) ==> Safety(c, v);
+    // }
+    // else {
       
-      assert Init(c, v) ==> v.hosts[0].hasLock;
-      assert Init(c, v) ==> Inv(c, v);
-      assert Inv(c, v) ==> Safety(c, v);
+    //   assert Init(c, v) ==> v.hosts[0].hasLock;
+    //   assert Init(c, v) ==> Inv(c, v);
+    //   assert Inv(c, v) ==> Safety(c, v);
 
-      // assume {:axiom} Inv(c, v) && Next(c, v, v');
-      // assert Inv(c, v');
-      assert Inv(c, v) && Next(c, v, v') ==> Inv(c, v');
+    //   // assume {:axiom} Inv(c, v) && Next(c, v, v');
+    //   // assert Inv(c, v');
+    //   assert Inv(c, v) && Next(c, v, v') ==> Inv(c, v');
 
       
 
-    }
+    // }
 /*}*/
   }
 }
